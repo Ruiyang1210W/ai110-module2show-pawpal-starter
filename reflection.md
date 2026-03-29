@@ -16,8 +16,17 @@ These three steps follow a simple flow: you describe yourself and your pet, you 
 
 **b. Design changes**
 
-- Did your design change during implementation?
-- If yes, describe at least one change and why you made it.
+After reviewing the skeleton, a few things got changed before writing any real logic:
+
+1. **Added `set_pet()` to `Owner`** — The original design left `owner.pet` as a plain attribute with no setter. That meant the only way to assign a pet was to reach directly into the object from outside. Adding `set_pet()` keeps it consistent with how `add_task()` works and makes the intent clearer.
+
+2. **`generate_plan()` now returns `List[CareTask]`** — It used to return `None`, which made the flow confusing. You'd call `generate_plan()`, then separately call `get_plan()` to get anything back. Now `generate_plan()` populates the internal lists *and* returns the result directly. `get_plan()` stays as a simple getter for the cached result if you need it later.
+
+3. **`get_tasks()` now returns `self.tasks` explicitly** — It had `pass` before, which means it would have returned `None`. Since `Scheduler` depends on this method to build the plan, a silent `None` return would have caused hard-to-debug crashes. Fixed it in the stub so there's no ambiguity.
+
+4. **`CareTask.edit()` now covers all four fields** — The original only allowed editing `duration_minutes` and `priority`. Since the UI will let users update tasks, `name` and `category` need to be editable too.
+
+5. **Added priority validation via `__post_init__`** — `priority` is a free string with no guardrails. Added a `VALID_PRIORITIES` constant and a `__post_init__` check that raises a `ValueError` for anything outside `"high"`, `"medium"`, `"low"`. This catches bad input early before it reaches the scheduler.
 
 ---
 
