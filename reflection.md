@@ -39,8 +39,17 @@ After reviewing the skeleton, a few things got changed before writing any real l
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+The scheduler uses a **greedy algorithm**: it sorts tasks by priority, then fits them into the available time budget one at a time. Once a task claims a slot, the decision is final — the scheduler never goes back to reconsider.
+
+This means a single long high-priority task (say, a 60-minute vet visit) can consume so much time that several shorter medium-priority tasks all get skipped, even though dropping the long task would have fit three of them instead.
+
+A smarter approach would be a proper knapsack algorithm that tries multiple combinations and picks the one with the highest total priority value. That would produce a better plan in edge cases.
+
+The greedy approach is kept for two reasons:
+1. It's predictable — a pet owner can look at the priority list and understand exactly why the plan came out the way it did.
+2. For typical daily care (walks, feeding, meds), task counts are small and the greedy result is almost always good enough. The complexity of a full knapsack solver isn't worth it here.
+
+A second, smaller tradeoff: conflict detection runs in O(n²) time by comparing every pair of tasks. For 6–10 daily tasks this is instant, but it would slow down noticeably with very large task lists. A sorted interval sweep would be faster, but harder to read and unnecessary at this scale.
 
 ---
 

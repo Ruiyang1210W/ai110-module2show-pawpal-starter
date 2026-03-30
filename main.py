@@ -1,58 +1,101 @@
 from pawpal_system import CareTask, Pet, Owner, Scheduler
 
 
-# --- Setup ---
+# ---------------------------------------------------------------------------
+# Setup
+# ---------------------------------------------------------------------------
 owner = Owner(name="Jordan", available_minutes=90)
 
-# Pet 1
 luna = Pet(name="Luna", species="Dog", age=3)
-luna.add_task(CareTask(name="Morning Walk",    duration_minutes=30, priority="high",   category="walk"))
-luna.add_task(CareTask(name="Breakfast",       duration_minutes=10, priority="high",   category="feeding"))
-luna.add_task(CareTask(name="Brush Coat",      duration_minutes=15, priority="low",    category="grooming"))
+luna.add_task(CareTask(name="Morning Walk",     duration_minutes=30, priority="high",   category="walk"))
+luna.add_task(CareTask(name="Breakfast",        duration_minutes=10, priority="high",   category="feeding"))
+luna.add_task(CareTask(name="Brush Coat",       duration_minutes=15, priority="low",    category="grooming"))
 
-# Pet 2
 mochi = Pet(name="Mochi", species="Cat", age=5)
-mochi.add_task(CareTask(name="Wet Food",       duration_minutes=5,  priority="high",   category="feeding"))
-mochi.add_task(CareTask(name="Flea Medication",duration_minutes=5,  priority="medium", category="meds",    frequency="weekly"))
-mochi.add_task(CareTask(name="Laser Play",     duration_minutes=20, priority="low",    category="enrichment"))
+mochi.add_task(CareTask(name="Wet Food",        duration_minutes=5,  priority="high",   category="feeding"))
+mochi.add_task(CareTask(name="Flea Medication", duration_minutes=5,  priority="medium", category="meds",        frequency="weekly"))
+mochi.add_task(CareTask(name="Laser Play",      duration_minutes=20, priority="low",    category="enrichment"))
 
 owner.add_pet(luna)
 owner.add_pet(mochi)
 
-# --- Generate plan ---
+
+# ---------------------------------------------------------------------------
+# Helper
+# ---------------------------------------------------------------------------
+def print_conflicts(label: str, conflicts: list) -> None:
+    print(f"\n  [{label}]")
+    if not conflicts:
+        print("  No conflicts detected. All clear!")
+    else:
+        for w in conflicts:
+            print(f"  WARNING: {w}")
+
+
+# ---------------------------------------------------------------------------
+# Case 1: Normal generated plan — should have zero conflicts
+# ---------------------------------------------------------------------------
+print("\n" + "=" * 60)
+print("  CASE 1: Normal generated plan (sequential, no conflicts)")
+print("=" * 60)
+
 scheduler = Scheduler(owner)
 scheduler.generate_plan()
 
-# --- Print Today's Schedule ---
-PRIORITY_COLORS = {"high": "!!!", "medium": ">> ", "low": "   "}
+print("\n  Scheduled tasks:")
+for pet, task in scheduler.sort_by_time():
+    end_min = Scheduler._hhmm_to_minutes(task.start_time) + task.duration_minutes
+    end_str = f"{end_min // 60:02d}:{end_min % 60:02d}"
+    print(f"    {task.start_time}-{end_str}  {task.name:<22} ({pet.name})")
 
-def print_schedule(scheduler: Scheduler) -> None:
-    owner = scheduler.owner
-    total_scheduled = sum(t.duration_minutes for _, t in scheduler.scheduled_tasks)
-
-    print("=" * 50)
-    print(f"  TODAY'S SCHEDULE  //  {owner.name}")
-    print(f"  Time budget: {owner.available_minutes} min  |  Used: {total_scheduled} min")
-    print("=" * 50)
-
-    if scheduler.scheduled_tasks:
-        print("\n  PLANNED TASKS\n")
-        for i, (pet, task) in enumerate(scheduler.scheduled_tasks, start=1):
-            marker = PRIORITY_COLORS.get(task.priority, "   ")
-            print(f"  {i}. {marker} {task.name}")
-            print(f"       Pet      : {pet.name} ({pet.species})")
-            print(f"       Category : {task.category}  |  {task.duration_minutes} min  |  Priority: {task.priority}")
-            print()
-
-    if scheduler.skipped_tasks:
-        print("  SKIPPED (not enough time)\n")
-        for pet, task in scheduler.skipped_tasks:
-            print(f"  x  {task.name} for {pet.name} — needs {task.duration_minutes} min")
-        print()
-
-    print("=" * 50)
-    print(scheduler.explain_plan())
-    print("=" * 50)
+print_conflicts("Conflict check", scheduler.detect_conflicts())
 
 
-print_schedule(scheduler)
+# ---------------------------------------------------------------------------
+# Case 2: Force two tasks to overlap — conflict must be detected
+# ---------------------------------------------------------------------------
+print("\n" + "=" * 60)
+print("  CASE 2: Two tasks force-scheduled at the same time")
+print("=" * 60)
+
+# Add two extra tasks and manually place them at overlapping windows
+luna.add_task(CareTask(name="Vet Medication",   duration_minutes=20, priority="high", category="meds"))
+mochi.add_task(CareTask(name="Morning Stretch", duration_minutes=15, priority="medium", category="enrichment"))
+
+scheduler2 = Scheduler(owner)
+# Force both tasks to start at 09:00 — they will overlap
+scheduler2.force_schedule("Luna",  "Vet Medication",   "09:00")
+scheduler2.force_schedule("Mochi", "Morning Stretch",  "09:05")
+
+print("\n  Force-scheduled tasks:")
+for pet, task in scheduler2.scheduled_tasks:
+    end_min = Scheduler._hhmm_to_minutes(task.start_time) + task.duration_minutes
+    end_str = f"{end_min // 60:02d}:{end_min % 60:02d}"
+    print(f"    {task.start_time}-{end_str}  {task.name:<22} ({pet.name})")
+
+print_conflicts("Conflict check", scheduler2.detect_conflicts())
+
+
+# ---------------------------------------------------------------------------
+# Case 3: Same pet, back-to-back but NOT overlapping — should be clean
+# ---------------------------------------------------------------------------
+print("\n" + "=" * 60)
+print("  CASE 3: Back-to-back tasks (touching but not overlapping)")
+print("=" * 60)
+
+luna.add_task(CareTask(name="Cool Down Walk",   duration_minutes=10, priority="low", category="walk"))
+luna.add_task(CareTask(name="Post Walk Feed",   duration_minutes=10, priority="low", category="feeding"))
+
+scheduler3 = Scheduler(owner)
+scheduler3.force_schedule("Luna", "Cool Down Walk", "10:00")   # ends 10:10
+scheduler3.force_schedule("Luna", "Post Walk Feed", "10:10")   # starts exactly when previous ends
+
+print("\n  Force-scheduled tasks:")
+for pet, task in scheduler3.scheduled_tasks:
+    end_min = Scheduler._hhmm_to_minutes(task.start_time) + task.duration_minutes
+    end_str = f"{end_min // 60:02d}:{end_min % 60:02d}"
+    print(f"    {task.start_time}-{end_str}  {task.name:<22} ({pet.name})")
+
+print_conflicts("Conflict check", scheduler3.detect_conflicts())
+
+print("\n" + "=" * 60)
