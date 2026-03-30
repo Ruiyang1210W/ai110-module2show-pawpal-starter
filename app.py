@@ -1,12 +1,38 @@
+import base64
 import streamlit as st
 from pawpal_system import CareTask, Pet, Owner, Scheduler
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
 # ---------------------------------------------------------------------------
+# Background image
+# ---------------------------------------------------------------------------
+with open("pets_bg.jpg", "rb") as f:
+    bg_data = base64.b64encode(f.read()).decode()
+
+st.markdown(
+    f"""
+    <style>
+    .stApp {{
+        background-image: url("data:image/jpg;base64,{bg_data}");
+        background-size: cover;
+        background-position: center;
+        background-attachment: fixed;
+    }}
+    /* Keep content readable over the image */
+    section[data-testid="stSidebar"],
+    .block-container {{
+        background-color: rgba(255, 255, 255, 0.88);
+        border-radius: 12px;
+        padding: 2rem;
+    }}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ---------------------------------------------------------------------------
 # Session state initialisation
-# Only runs the first time — on every subsequent re-run the objects already
-# exist in st.session_state, so this block is skipped and data is preserved.
 # ---------------------------------------------------------------------------
 if "owner" not in st.session_state:
     st.session_state.owner = None
@@ -35,7 +61,6 @@ with st.form("owner_form"):
     submitted = st.form_submit_button("Save profile")
 
 if submitted:
-    # Create a fresh Owner, carrying over any existing pets if the owner already existed
     existing_pets = st.session_state.owner.pets if st.session_state.owner else []
     st.session_state.owner = Owner(
         name=owner_name,
@@ -44,6 +69,7 @@ if submitted:
     )
     for pet in existing_pets:
         st.session_state.owner.add_pet(pet)
+    st.session_state.scheduler = None   # reset plan when profile changes
     st.success(f"Profile saved for {owner_name} ({available_minutes} min available).")
 
 if st.session_state.owner:
@@ -72,14 +98,12 @@ else:
 
     if add_pet:
         owner = st.session_state.owner
-        # Prevent duplicate pet names
         if owner.get_pet(pet_name):
             st.warning(f"{pet_name} is already in your list.")
         else:
             owner.add_pet(Pet(name=pet_name, species=species, age=age, notes=notes))
             st.success(f"Added {pet_name} the {species}!")
 
-    # Show current pets
     owner = st.session_state.owner
     if owner.pets:
         st.write("**Your pets:**")
@@ -94,7 +118,7 @@ else:
 st.divider()
 
 # ---------------------------------------------------------------------------
-# Section 3: Add a task to a pet
+# Section 3: Add a care task
 # ---------------------------------------------------------------------------
 st.subheader("3. Add a Care Task")
 
@@ -103,7 +127,7 @@ if not owner or not owner.pets:
     st.info("Add at least one pet before adding tasks.")
 else:
     with st.form("task_form"):
-        pet_options = [p.name for p in owner.pets]
+        pet_options  = [p.name for p in owner.pets]
         selected_pet = st.selectbox("Assign to pet", pet_options)
 
         col1, col2, col3 = st.columns(3)
@@ -116,7 +140,7 @@ else:
 
         col4, col5 = st.columns(2)
         with col4:
-            category = st.selectbox("Category", ["walk", "feeding", "meds", "grooming", "enrichment", "other"])
+            category  = st.selectbox("Category", ["walk", "feeding", "meds", "grooming", "enrichment", "other"])
         with col5:
             frequency = st.selectbox("Frequency", ["daily", "weekly", "as-needed"])
 
@@ -133,25 +157,34 @@ else:
                 frequency=frequency,
             ))
             st.success(f"Added '{task_name}' to {selected_pet}'s task list.")
+            st.session_state.scheduler = None   # stale plan — needs regenerating
         except ValueError as e:
             st.error(str(e))
 
-    # Show all tasks across all pets
+    # Show all tasks grouped by pet
     all_pairs = owner.get_all_tasks()
     if all_pairs:
         st.write("**All current tasks:**")
-        rows = [
-            {
-                "Pet": pet.name,
-                "Task": task.name,
-                "Duration (min)": task.duration_minutes,
-                "Priority": task.priority,
-                "Category": task.category,
-                "Done": "Yes" if task.completed else "No",
-            }
-            for pet, task in all_pairs
-        ]
-        st.table(rows)
+
+        # Group by pet for a cleaner display
+        for pet in owner.pets:
+            pet_tasks = [(p, t) for p, t in all_pairs if p.name == pet.name]
+            if not pet_tasks:
+                continue
+            st.markdown(f"*{pet.summary()}*")
+            rows = [
+                {
+                    "Task": t.name,
+                    "Duration (min)": t.duration_minutes,
+                    "Priority": t.priority,
+                    "Category": t.category,
+                    "Frequency": t.frequency,
+                    "Done": "Yes" if t.completed else "No",
+                    "Due": t.due_date.isoformat(),
+                }
+                for _, t in pet_tasks
+            ]
+            st.table(rows)
     else:
         st.info("No tasks added yet.")
 
@@ -162,38 +195,87 @@ st.divider()
 # ---------------------------------------------------------------------------
 st.subheader("4. Generate Today's Schedule")
 
+PRIORITY_ICON = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+
 owner = st.session_state.owner
 if not owner or not owner.get_all_pending_tasks():
     st.info("Add an owner, at least one pet, and at least one task to generate a schedule.")
 else:
-    if st.button("Generate schedule"):
-        scheduler = Scheduler(owner)
-        scheduler.generate_plan()
-        st.session_state.scheduler = scheduler
+    col_gen, col_filter = st.columns([2, 1])
+    with col_gen:
+        if st.button("Generate schedule", type="primary"):
+            scheduler = Scheduler(owner)
+            scheduler.generate_plan()
+            st.session_state.scheduler = scheduler
 
     if st.session_state.scheduler:
-        scheduler = st.session_state.scheduler
-        scheduled = scheduler.scheduled_tasks
-        skipped   = scheduler.skipped_tasks
-        total_min = sum(t.duration_minutes for _, t in scheduled)
+        scheduler  = st.session_state.scheduler
+        total_min  = sum(t.duration_minutes for _, t in scheduler.scheduled_tasks)
+        time_left  = owner.available_minutes - total_min
 
-        st.success(f"Plan ready — {total_min} of {owner.available_minutes} minutes used.")
+        # --- Summary bar ---
+        st.success(
+            f"Plan ready — **{total_min} min** used out of **{owner.available_minutes} min** "
+            f"({time_left} min free)"
+        )
 
-        if scheduled:
-            st.markdown("#### Scheduled tasks")
-            for i, (pet, task) in enumerate(scheduled, start=1):
-                st.markdown(
-                    f"**{i}. {task.name}** for {pet.name} "
-                    f"| {task.duration_minutes} min | Priority: `{task.priority}`"
-                )
+        # --- Conflict warnings (shown before the plan so the owner sees them first) ---
+        conflicts = scheduler.detect_conflicts()
+        if conflicts:
+            st.markdown("#### Scheduling Conflicts Detected")
+            for conflict in conflicts:
+                st.warning(conflict)
+            st.caption("These tasks overlap in time. Consider adjusting their start times or durations.")
 
+        # --- Filter controls ---
+        with st.expander("Filter the schedule", expanded=False):
+            filter_col1, filter_col2 = st.columns(2)
+            with filter_col1:
+                pet_names   = ["All pets"] + [p.name for p in owner.pets]
+                filter_pet  = st.selectbox("Show tasks for", pet_names, key="filter_pet")
+            with filter_col2:
+                filter_status = st.selectbox("Show status", ["All", "Pending", "Done"], key="filter_status")
+
+        # Apply filters
+        display_pairs = scheduler.sort_by_time()   # always show in time order
+
+        if filter_pet != "All pets":
+            display_pairs = [(p, t) for p, t in display_pairs if p.name == filter_pet]
+        if filter_status == "Pending":
+            display_pairs = [(p, t) for p, t in display_pairs if not t.completed]
+        elif filter_status == "Done":
+            display_pairs = [(p, t) for p, t in display_pairs if t.completed]
+
+        # --- Scheduled task table ---
+        if display_pairs:
+            st.markdown("#### Scheduled Tasks")
+            rows = []
+            for pet, task in display_pairs:
+                end_min = Scheduler._hhmm_to_minutes(task.start_time) + task.duration_minutes
+                end_str = f"{end_min // 60:02d}:{end_min % 60:02d}"
+                rows.append({
+                    "Time": f"{task.start_time} - {end_str}",
+                    "Task": f"{PRIORITY_ICON.get(task.priority, '')} {task.name}",
+                    "Pet": pet.name,
+                    "Duration": f"{task.duration_minutes} min",
+                    "Category": task.category,
+                    "Freq": task.frequency,
+                    "Done": "Yes" if task.completed else "No",
+                })
+            st.table(rows)
+        else:
+            st.info("No tasks match the current filter.")
+
+        # --- Skipped tasks ---
+        skipped = scheduler.skipped_tasks
         if skipped:
-            st.markdown("#### Skipped (not enough time)")
-            for pet, task in skipped:
-                st.markdown(
-                    f"- ~~{task.name}~~ for {pet.name} "
-                    f"| needs {task.duration_minutes} min"
-                )
+            with st.expander(f"Skipped tasks ({len(skipped)}) — not enough time", expanded=False):
+                for pet, task in skipped:
+                    st.markdown(
+                        f"- **{task.name}** for {pet.name} "
+                        f"| needs {task.duration_minutes} min | priority: `{task.priority}`"
+                    )
 
-        with st.expander("Why this plan?"):
+        # --- Plan explanation ---
+        with st.expander("Why this plan?", expanded=False):
             st.text(scheduler.explain_plan())

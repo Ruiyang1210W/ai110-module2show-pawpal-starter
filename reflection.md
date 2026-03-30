@@ -35,7 +35,9 @@ After reviewing the skeleton, a few things got changed before writing any real l
 **a. Constraints and priorities**
 
 - What constraints does your scheduler consider (for example: time, priority, preferences)?
+Time, priority
 - How did you decide which constraints mattered most?
+Depends on the priority
 
 **b. Tradeoffs**
 
@@ -58,13 +60,16 @@ A second, smaller tradeoff: conflict detection runs in O(n²) time by comparing 
 **a. How you used AI**
 
 - How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
+Design brainstorming and debugging
 - What kinds of prompts or questions were most helpful?
+The more specific prompts the more helpful.
 
 **b. Judgment and verification**
 
 - Describe one moment where you did not accept an AI suggestion as-is.
+The UML diagram part
 - How did you evaluate or verify what the AI suggested?
-
+I verify the diagram on https://mermaid.live/ to check if they are all correct.
 ---
 
 ## 4. Testing and Verification
@@ -72,12 +77,21 @@ A second, smaller tradeoff: conflict detection runs in O(n²) time by comparing 
 **a. What you tested**
 
 - What behaviors did you test?
-- Why were these tests important?
+Tasks fitting into the time budget (including exact fit and one-minute-over edge cases)
+Priority sorting — high before medium before low, no matter what order tasks were added
+Recurring tasks — daily creates a new one tomorrow, weekly in 7 days, as-needed creates nothing
+Conflict detection — overlapping time windows get flagged, back-to-back ones don't
+Filtering — by pet name and by done/pending status
+Edge cases — owner with no pets, pet with no tasks, zero minutes available, completing a task twice
 
+- Why were these tests important?
+These are the kinds of mistakes that only show up when you actually check, so having automated tests means you catch them before the user does.
 **b. Confidence**
 
 - How confident are you that your scheduler works correctly?
+4/5
 - What edge cases would you test next if you had more time?
+A task whose duration is longer than the entire day
 
 ---
 
@@ -86,11 +100,14 @@ A second, smaller tradeoff: conflict detection runs in O(n²) time by comparing 
 **a. What went well**
 
 - What part of this project are you most satisfied with?
+When the project is ready for use and can be helpful for people
 
 **b. What you would improve**
 
 - If you had another iteration, what would you improve or redesign?
+I'd rework how the scheduler handles time. Right now it just stacks tasks back-to-back starting at 08:00.
 
 **c. Key takeaway**
 
 - What is one important thing you learned about designing systems or working with AI on this project?
+AI is really good at filling in code fast but it doesn't know what you actually want. The most useful moments were when I reviewed what it suggested and pushed back on it.

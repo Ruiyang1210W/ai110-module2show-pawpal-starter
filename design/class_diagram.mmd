@@ -1,11 +1,16 @@
 classDiagram
-    class Owner {
+    class CareTask {
         +String name
-        +int available_minutes
-        +String preferences
-        +add_task(task)
-        +remove_task(task_name)
-        +get_tasks()
+        +int duration_minutes
+        +String priority
+        +String category
+        +String frequency
+        +bool completed
+        +String start_time
+        +date due_date
+        +mark_done() CareTask
+        +edit()
+        +to_dict() dict
     }
 
     class Pet {
@@ -13,29 +18,43 @@ classDiagram
         +String species
         +int age
         +String notes
-        +summary()
+        +List~CareTask~ tasks
+        +summary() str
+        +add_task(task)
+        +remove_task(task_name)
+        +get_tasks() List
+        +get_pending_tasks() List
+        +complete_task(task_name) bool
     }
 
-    class CareTask {
+    class Owner {
         +String name
-        +int duration_minutes
-        +String priority
-        +String category
-        +bool completed
-        +mark_done()
-        +edit()
-        +to_dict()
+        +int available_minutes
+        +String preferences
+        +List~Pet~ pets
+        +add_pet(pet)
+        +remove_pet(pet_name)
+        +get_pet(pet_name) Pet
+        +get_all_tasks() List
+        +get_all_pending_tasks() List
     }
 
     class Scheduler {
         +Owner owner
         +List scheduled_tasks
         +List skipped_tasks
-        +generate_plan()
-        +explain_plan()
-        +get_plan()
+        +generate_plan() List
+        +sort_by_time() List
+        +filter_by_pet(pet_name) List
+        +filter_by_status(completed) List
+        +detect_conflicts() List
+        +force_schedule(pet, task, time) bool
+        +mark_task_done(pet, task) bool
+        +explain_plan() str
+        +get_plan() List
     }
 
-    Owner "1" --> "1" Pet : owns
-    Owner "1" --> "many" CareTask : manages
+    Owner "1" --> "many" Pet : owns
+    Pet "1" --> "many" CareTask : has
     Scheduler "1" --> "1" Owner : uses
+    CareTask ..> CareTask : mark_done() creates next occurrence
