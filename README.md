@@ -53,6 +53,29 @@ Tasks have a `frequency` field: `"daily"`, `"weekly"`, or `"as-needed"`. When a 
 
 ---
 
+## Testing PawPal+
+
+To run the tests:
+
+```bash
+py -m pytest tests/test_pawpal.py -v
+```
+
+There are 37 tests total. They cover the stuff that's easy to get wrong:
+
+- tasks fitting (or not fitting) into the time budget
+- priority sorting — high before medium before low, no matter what order you add them
+- recurring tasks — daily creates a new one tomorrow, weekly in 7 days, as-needed does nothing
+- conflict detection — overlapping time windows get flagged, back-to-back ones don't
+- filtering — by pet name or by done/not done
+- edge cases — no pets, no tasks, zero minutes available, completing a task twice
+
+**Confidence: 4/5**
+
+The core scheduling logic feels solid. The main thing I'm less sure about is how the app holds up with a lot of pets or tasks — the conflict checker checks every pair, so it'd slow down with a big list. Good enough for a daily pet planner though.
+
+---
+
 ### Suggested workflow
 
 1. Read the scenario carefully and identify requirements and edge cases.
